@@ -23,7 +23,11 @@ defmodule HivexProxyServer.BindHandler do
     Logger.info(ip: ip, port: port)
 
     {:ok, pid} =
-      ThousandIsland.start_link(port: 1667, handler_module: HivexProxyServer.ListenerHandler)
+      ThousandIsland.start_link(
+        port: 1667,
+        handler_module: HivexProxyServer.ListenerHandler,
+        handler_options: [client_socket: socket]
+      )
 
     Logger.info(message: "Started listener", port: 1667)
     {:continue, {state, pid}}
