@@ -5,6 +5,9 @@ defmodule HivexProxyServer.BindHandler do
    * the server read timeout kills the connection after a minute -- implement heart beat
   """
 
+  @version 0x1
+  @bind_command 0x1
+
   use ThousandIsland.Handler
 
   require Logger
@@ -16,7 +19,7 @@ defmodule HivexProxyServer.BindHandler do
   end
 
   @impl ThousandIsland.Handler
-  def handle_data(<<_ver, 1, address::binary>>, socket, state) do
+  def handle_data(<<@version, @bind_command, address::binary>>, socket, state) do
     Logger.info(message: "Handling bind request", data: address)
 
     {:ok, {ip, port}} = ThousandIsland.Socket.peername(socket)
