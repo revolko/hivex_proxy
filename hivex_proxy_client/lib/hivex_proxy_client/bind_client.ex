@@ -5,6 +5,9 @@ defmodule HivexProxyClient.BindClient do
    * the server read timeout kills the connection after a minute -- implement heart beat
   """
 
+  @server_version 0x1
+  @bind_command 0x1
+
   use GenServer
 
   require Logger
@@ -15,6 +18,11 @@ defmodule HivexProxyClient.BindClient do
 
   def send_message(message) do
     GenServer.call(__MODULE__, {:send, message})
+  end
+
+  def bind_to_port(port) when port >= 1 and port <= 65535 do
+    port = :binary.encode_unsigned(port)
+    GenServer.call(__MODULE__, {:send, <<@server_version, @bind_command>> <> port})
   end
 
   def close_socket() do

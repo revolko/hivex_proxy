@@ -19,15 +19,12 @@ defmodule HivexProxyServer.BindHandler do
   end
 
   @impl ThousandIsland.Handler
-  def handle_data(<<@version, @bind_command, address::binary>>, socket, state) do
-    Logger.info(message: "Handling bind request", data: address)
-
-    {:ok, {ip, port}} = ThousandIsland.Socket.peername(socket)
-    Logger.info(ip: ip, port: port)
+  def handle_data(<<@version, @bind_command, port::binary-size(2)>>, socket, state) do
+    Logger.info(message: "Handling bind request", port: port)
 
     {:ok, pid} =
       ThousandIsland.start_link(
-        port: 1667,
+        port: :binary.decode_unsigned(port),
         handler_module: HivexProxyServer.ListenerHandler,
         handler_options: [client_socket: socket]
       )
