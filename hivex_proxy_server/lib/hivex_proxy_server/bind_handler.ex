@@ -3,6 +3,8 @@ defmodule HivexProxyServer.BindHandler do
   TODO
    * doc
    * the server read timeout kills the connection after a minute -- implement heart beat
+   * response handling -- each user request is marked with IP and PORT (6bytes); server can
+     distinguish between different users based on the combination of IP and PORT
   """
 
   @version 0x1
@@ -30,7 +32,13 @@ defmodule HivexProxyServer.BindHandler do
       )
 
     Logger.info(message: "Started listener", port: 1667)
-    {:continue, {state, pid}}
+    {:continue, {{:listening, pid}, state}}
+  end
+
+  @impl ThousandIsland.Handler
+  def handle_data(data, _socket, {{:listening, _pid}, state}) do
+    Logger.info(message: "Got random while listening data", data: data)
+    {:close, state}
   end
 
   @impl ThousandIsland.Handler
@@ -40,7 +48,7 @@ defmodule HivexProxyServer.BindHandler do
   end
 
   @impl ThousandIsland.Handler
-  def handle_close(_socket, {_state, listener_pid}) do
+  def handle_close(_socket, {{:listening, listener_pid}, _state}) do
     Logger.info(message: "Proxy client connection is closed")
     :ok = ThousandIsland.stop(listener_pid)
     Logger.info(message: "Bind listener stopped")
