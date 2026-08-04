@@ -1,10 +1,37 @@
 defmodule HivexProxyServer.BindHandler do
   @moduledoc """
   TODO
-   * doc
    * the server read timeout kills the connection after a minute -- implement heart beat
    * response handling -- each user request is marked with IP and PORT (6bytes); server can
      distinguish between different users based on the combination of IP and PORT
+   * port number check
+   * bind acknowledgement
+
+  The connection handler for a proxy client connection, creating a tunnel.
+
+  ## Tunnel creation
+
+  The creation of the tunnel between the client and the server follows:
+  1. the proxy client opens TCP connection to the server
+  2. the proxy server accepts the connection
+  3. [TBD] the proxy client sends authentication details (TBD what it is)
+  4. [TBD] the proxy server validates the authentication details
+    - if the details are invalid, the connection is dropped (with reason?)
+  5. the proxy client sends **bind request**
+    - triggers the proxy server to create a listener
+  6. the proxy server responds with **bind response**
+
+  ## Bind request in detail
+
+  The proxy client can request the proxy server to listen for the incoming traffic on the dedicated
+  port by issuing the **bind request**.
+
+  Upon the bind request, the proxy server starts up ThousandIsland supervisor on the requested port.
+  In addition, the proxy server sends the **bind response** to the client.
+
+  After this point, all traffic that arrives to the new server listener is forwarded to the proxy
+  client through the tunnel. The proxy client takes care of forwarding requests to a dedicated
+  service/server.
   """
 
   @version 0x1
@@ -14,12 +41,37 @@ defmodule HivexProxyServer.BindHandler do
 
   require Logger
 
+  @doc """
+  This function is triggered right after the connection to the client is
+  established. The `:continue` is returned to keep the connection open.
+  """
   @impl ThousandIsland.Handler
   def handle_connection(_socket, state) do
     Logger.info(message: "Proxy client connected")
     {:continue, state}
   end
 
+  @doc """
+  Handles any data sent by the client through the tunnel.
+
+  The first message that the proxy server expects is the **bind request**. After
+  bind request is processed, the handler is switched to the `listening` state.
+
+  _TO BE IMPLEMENTED_
+  ## Listening
+  In the listening state, the handler interprets any traffic from the
+  client as the response. No control messages are expected.
+
+  TODO: update doc with details about response messages.
+
+  ## Stopping the listener
+  The client can stop the listener by simply closing the tunnel.
+
+  ## Unexpected control message
+  In case of the unexpected control message, the server closes the tunnel.
+  The client can start a new tunnel which restarts the whole tunnel
+  establishing process.
+  """
   @impl ThousandIsland.Handler
   def handle_data(<<@version, @bind_command, port::binary-size(2)>>, socket, state) do
     Logger.info(message: "Handling bind request", port: port)
@@ -47,6 +99,14 @@ defmodule HivexProxyServer.BindHandler do
     {:close, state}
   end
 
+  @doc """
+  Handles the closing of the tunnel.
+
+  If the handler was in the `listening` state, the listener
+  supervisor is stopped. All opened connections on the listener
+  are dropped because they cannot be delivered -- the tunnel is
+  already down.
+  """
   @impl ThousandIsland.Handler
   def handle_close(_socket, {{:listening, listener_pid}, _state}) do
     Logger.info(message: "Proxy client connection is closed")
