@@ -49,6 +49,15 @@ defmodule HivexProxyClient.BindClient do
   end
 
   @impl true
+  def handle_info(
+        {:tcp, _port, <<@server_version, @bind_command, ack_port::binary-size(2)>>},
+        socket
+      ) do
+    Logger.info(message: "Got bind response from server", port: :binary.decode_unsigned(ack_port))
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_info({:tcp, _port, response}, socket) do
     Logger.info(message: "Got response from server", response: response)
     {:noreply, socket}
