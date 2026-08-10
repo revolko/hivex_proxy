@@ -2,10 +2,7 @@ defmodule HivexProxyServer.BindHandler do
   @moduledoc """
   TODO
    * the server read timeout kills the connection after a minute -- implement heart beat
-   * response handling -- each user request is marked with IP and PORT (6bytes); server can
-     distinguish between different users based on the combination of IP and PORT
    * port number check
-   * bind acknowledgement
 
   The connection handler for a proxy client connection, creating a tunnel.
 
@@ -54,15 +51,15 @@ defmodule HivexProxyServer.BindHandler do
   @doc """
   Handles any data sent by the client through the tunnel.
 
-  The first message that the proxy server expects is the **bind request**. After
-  bind request is processed, the handler is switched to the `listening` state.
+  The first message that the proxy server expects is the **bind request**. The request triggers
+  creation of the `listener` on the given port (read from the request message). After listener is
+  started, the handler send **bind response** message to the proxy client and is switched to the
+  `listening` state.
 
   _TO BE IMPLEMENTED_
   ## Listening
   In the listening state, the handler interprets any traffic from the
   client as the response. No control messages are expected.
-
-  TODO: update doc with details about response messages.
 
   ## Stopping the listener
   The client can stop the listener by simply closing the tunnel.
@@ -76,15 +73,32 @@ defmodule HivexProxyServer.BindHandler do
   def handle_data(<<@version, @bind_command, port::binary-size(2)>>, socket, state) do
     Logger.info(message: "Handling bind request", port: port)
 
-    {:ok, pid} =
-      ThousandIsland.start_link(
-        port: :binary.decode_unsigned(port),
-        handler_module: HivexProxyServer.ListenerHandler,
-        handler_options: [client_socket: socket]
-      )
+    with {:start_listener, {:ok, pid}} <-
+           {:start_listener,
+            ThousandIsland.start_link(
+              port: :binary.decode_unsigned(port),
+              handler_module: HivexProxyServer.ListenerHandler,
+              handler_options: [client_socket: socket]
+            )},
+         {:get_listener_info, pid, {:ok, {_listen_address, listen_port}}} <-
+           {:get_listener_info, pid, ThousandIsland.listener_info(pid)},
+         {:send_bind_response, pid, :ok} <-
+           {:send_bind_response, pid,
+            ThousandIsland.Socket.send(socket, <<@version, @bind_command, listen_port::16>>)} do
+      {:continue, {{:listening, pid}, state}}
+    else
+      {:start_listener, error} ->
+        Logger.error(message: "Unable to start the listener supervisor", details: error)
+        {:close, state}
 
-    Logger.info(message: "Started listener", port: 1667)
-    {:continue, {{:listening, pid}, state}}
+      {:get_listener_info, pid, _error} ->
+        Logger.error(message: "Unable to get listener information")
+        {:close, {{:listening, pid}, state}}
+
+      {:send_bind_response, pid, {:error, error}} ->
+        Logger.error(message: "Failed to send bind response message", details: error)
+        {:close, {{:listening, pid}, state}}
+    end
   end
 
   @impl ThousandIsland.Handler
