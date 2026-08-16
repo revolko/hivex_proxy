@@ -72,5 +72,19 @@ defmodule HivexProxyServer do
   ```
   0x01 (VER), 0x01 (CMD), 0x0683 (PORT)
   ```
+
+  #### Health check
+  Control message from the proxy client to signal to the proxy server that it is healthy.
+
+  ```
+  0x01 (VER), 0x0 (six zero bytes; 7 bytes total)
+  ```
+
+  #### Health check ACK
+  Control message from the proxy server to the proxy client as acknowledgment of health check.
+
+  ```
+  0x01 (VER), 0x0 (six zero bytes; 7 bytes total)
+  ```
   """
 end

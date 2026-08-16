@@ -33,6 +33,7 @@ defmodule HivexProxyServer.BindHandler do
 
   @version 0x1
   @bind_command 0x1
+  @health_check_signal <<0::6*8>>
 
   use ThousandIsland.Handler
 
@@ -58,11 +59,18 @@ defmodule HivexProxyServer.BindHandler do
 
   _TO BE IMPLEMENTED_
   ## Listening
-  In the listening state, the handler interprets any traffic from the
-  client as the response. No control messages are expected.
+  In the listening state, the proxy server redirects proxy client messages to clients of the
+  listener. A listener is picked based on the first 7 bytes of a message (version - 1 byte, IP - 
+  4 bytes, port - 2 bytes).
 
   ## Stopping the listener
   The client can stop the listener by simply closing the tunnel.
+
+  ## Health checks
+  The proxy client sends the **health check** message every 30 seconds. The health check is started
+  the moment the proxy client connects to the proxy server. Health checks make sure that the tunnel
+  stays open. Without health checks the TCP tunnel closes after some time without any traffic. By
+  default a 1 minute.
 
   ## Unexpected control message
   In case of the unexpected control message, the server closes the tunnel.
@@ -99,6 +107,19 @@ defmodule HivexProxyServer.BindHandler do
         Logger.error(message: "Failed to send bind response message", details: error)
         {:close, {{:listening, pid}, state}}
     end
+  end
+
+  @impl ThousandIsland.Handler
+  def handle_data(<<@version>> <> @health_check_signal, socket, state) do
+    Logger.debug(message: "Received health check")
+
+    with :ok <- ThousandIsland.Socket.send(socket, <<@version>> <> @health_check_signal) do
+      Logger.debug(message: "Health check ACK sent")
+    else
+      {:error, error} -> Logger.error(message: "Failed to send health check ACK", details: error)
+    end
+
+    {:continue, state}
   end
 
   @impl ThousandIsland.Handler
