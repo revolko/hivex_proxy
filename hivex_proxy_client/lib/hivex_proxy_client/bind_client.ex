@@ -2,7 +2,6 @@ defmodule HivexProxyClient.BindClient do
   @moduledoc """
   TODO
    * doc
-   * the server read timeout kills the connection after a minute -- implement heart beat
   """
 
   @server_version 0x1
