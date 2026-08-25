@@ -13,17 +13,8 @@ defmodule HivexProxyClient.BindClient do
 
   require Logger
 
-  def start_link([]) do
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
-  end
-
-  def send_message(message) do
-    GenServer.call(__MODULE__, {:send, message})
-  end
-
-  def bind_to_port(port) when port >= 1 and port <= 65535 do
-    port = :binary.encode_unsigned(port)
-    GenServer.call(__MODULE__, {:send, <<@server_version, @bind_command>> <> port})
+  def start_link(%HivexProxyClient.Server{} = server) do
+    GenServer.start_link(__MODULE__, server)
   end
 
   def close_socket() do
@@ -31,27 +22,25 @@ defmodule HivexProxyClient.BindClient do
   end
 
   @impl true
-  def init([]) do
-    {:ok, socket} = :gen_tcp.connect(:localhost, 1666, [:binary])
-    Logger.info(message: "connected to proxy server")
-    schedule_healthcheck()
-    {:ok, socket}
+  def init(%HivexProxyClient.Server{} = server) do
+    binary_port = :binary.encode_unsigned(server.proxy_listener_port)
+
+    with {:ok, socket} <- :gen_tcp.connect(:localhost, 1666, [:binary]),
+         :gen_tcp.send(socket, <<@server_version, @bind_command>> <> binary_port) do
+      Logger.info(message: "connected to proxy server")
+      schedule_healthcheck()
+      {:ok, %{tunnel: socket, server: server}}
+    end
   end
 
   @impl true
-  def handle_call({:send, message}, _from, socket) do
-    :ok = :gen_tcp.send(socket, message)
-    {:reply, :ok, socket}
-  end
-
-  @impl true
-  def handle_call(:close, _from, socket) do
+  def handle_call(:close, _from, %{tunnel: socket} = state) do
     :ok = :gen_tcp.close(socket)
-    {:stop, :socket_close_call, :ok, socket}
+    {:stop, :socket_close_call, :ok, state}
   end
 
   @impl true
-  def handle_info(:send_healthcheck, socket) do
+  def handle_info(:send_healthcheck, %{tunnel: socket} = state) do
     with :ok <- :gen_tcp.send(socket, <<@server_version>> <> @health_check_signal) do
       Logger.debug(message: "Health check sent")
     else
@@ -59,37 +48,39 @@ defmodule HivexProxyClient.BindClient do
     end
 
     schedule_healthcheck()
-    {:noreply, socket}
+    {:noreply, state}
   end
 
   @impl true
   def handle_info(
         {:tcp, _socket, <<@server_version>> <> @health_check_signal},
-        socket
+        state
       ) do
     Logger.debug(message: "Received health check ACK")
-    {:noreply, socket}
+    {:noreply, state}
   end
 
   @impl true
   def handle_info(
         {:tcp, _port, <<@server_version, @bind_command, ack_port::binary-size(2)>>},
-        socket
+        state
       ) do
-    Logger.info(message: "Got bind response from server", port: :binary.decode_unsigned(ack_port))
-    {:noreply, socket}
+    port = :binary.decode_unsigned(ack_port)
+    Logger.info(message: "Got bind response from server", port: port)
+    {:noreply, state}
   end
 
   @impl true
-  def handle_info({:tcp, _port, response}, socket) do
+  def handle_info({:tcp, _port, response}, state) do
     Logger.info(message: "Got response from server", response: response)
-    {:noreply, socket}
+    # TODO: send data to the server and send response through the tunnel
+    {:noreply, state}
   end
 
   @impl true
-  def handle_info({:tcp_closed, _port}, socket) do
+  def handle_info({:tcp_closed, _port}, state) do
     Logger.info(message: "TCP connection to the server was closed")
-    {:stop, "connection closed by server", socket}
+    {:stop, "connection closed by server", state}
   end
 
   defp schedule_healthcheck do
