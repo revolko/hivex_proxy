@@ -71,9 +71,14 @@ defmodule HivexProxyClient.BindClient do
   end
 
   @impl true
-  def handle_info({:tcp, _port, response}, state) do
+  def handle_info({:tcp, _port, response}, %{tunnel: tunnel, server: server} = state) do
     Logger.info(message: "Got response from server", response: response)
-    # TODO: send data to the server and send response through the tunnel
+
+    {:ok, _} =
+      Task.Supervisor.start_child(HivexProxyClient.ServerConnectionsSupervisor, fn ->
+        HivexProxyClient.ServerHandler.handle_data(response, server, tunnel)
+      end)
+
     {:noreply, state}
   end
 
