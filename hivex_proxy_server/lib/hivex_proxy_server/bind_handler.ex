@@ -123,9 +123,9 @@ defmodule HivexProxyServer.BindHandler do
   end
 
   @impl ThousandIsland.Handler
-  def handle_data(data, _socket, {{:listening, _pid}, state}) do
+  def handle_data(data, _socket, {{:listening, pid}, state}) do
     Logger.info(message: "Got random while listening data", data: data)
-    {:close, state}
+    {:continue, {{:listening, pid}, state}}
   end
 
   @impl ThousandIsland.Handler
