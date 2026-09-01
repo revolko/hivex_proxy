@@ -6,7 +6,8 @@ defmodule HivexProxyClient.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      {HivexProxyClient.ConnectionsSupervisor, []}
+      {HivexProxyClient.ConnectionsSupervisor, []},
+      {Task.Supervisor, name: HivexProxyClient.ServerConnectionsSupervisor}
     ]
 
     opts = [strategy: :one_for_one, name: HivexProxyClient.Supervisor]
