@@ -6,8 +6,10 @@ defmodule HivexProxyClient.BindClient do
 
   @server_version 0x1
   @bind_command 0x1
+  @error_status_length 8
   @health_check_signal <<0::6*8>>
   @health_check_period 30 * 1000
+  @sender_ref_length 32
 
   use GenServer
 
@@ -71,12 +73,31 @@ defmodule HivexProxyClient.BindClient do
   end
 
   @impl true
-  def handle_info({:tcp, _port, response}, %{tunnel: tunnel, server: server} = state) do
-    Logger.info(message: "Got response from server", response: response)
+  def handle_info(
+        {:tcp, _port,
+         <<sender_length::@sender_ref_length, sender_ref::binary-size(sender_length),
+           data::binary>>},
+        %{tunnel: tunnel, server: server} = state
+      ) do
+    Logger.info(message: "Got data from proxy server", data: data)
 
     {:ok, _} =
       Task.Supervisor.start_child(HivexProxyClient.ServerConnectionsSupervisor, fn ->
-        HivexProxyClient.ServerHandler.handle_data(response, server, tunnel)
+        case HivexProxyClient.ServerHandler.handle_data(data, server) do
+          {:ok, server_response} ->
+            :ok =
+              :gen_tcp.send(
+                tunnel,
+                <<sender_length::@sender_ref_length>> <>
+                  sender_ref <> <<0::@error_status_length>> <> server_response
+              )
+
+          {:error, _} ->
+            :gen_tcp.send(
+              tunnel,
+              <<sender_length::@sender_ref_length>> <> sender_ref <> <<1::@error_status_length>>
+            )
+        end
       end)
 
     {:noreply, state}

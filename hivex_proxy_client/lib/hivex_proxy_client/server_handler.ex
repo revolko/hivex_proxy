@@ -29,9 +29,4 @@ defmodule HivexProxyClient.ServerHandler do
     Logger.debug(message: "Waiting for server data")
     :gen_tcp.recv(socket, 0, @server_timeout)
   end
-
-  defp forward_response(data, tunnel) do
-    Logger.debug(message: "Forwarding data to the tunnel", data: data)
-    :gen_tcp.send(tunnel, data)
-  end
 end
