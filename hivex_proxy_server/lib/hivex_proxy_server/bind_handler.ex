@@ -34,6 +34,8 @@ defmodule HivexProxyServer.BindHandler do
   @version 0x1
   @bind_command 0x1
   @health_check_signal <<0::6*8>>
+  @sender_ref_length 32
+  @error_status_length 8
 
   use ThousandIsland.Handler
 
@@ -86,7 +88,7 @@ defmodule HivexProxyServer.BindHandler do
             ThousandIsland.start_link(
               port: :binary.decode_unsigned(port),
               handler_module: HivexProxyServer.ListenerHandler,
-              handler_options: [client_socket: socket]
+              handler_options: [bind_handler: self()]
             )},
          {:get_listener_info, pid, {:ok, {_listen_address, listen_port}}} <-
            {:get_listener_info, pid, ThousandIsland.listener_info(pid)},
@@ -123,6 +125,32 @@ defmodule HivexProxyServer.BindHandler do
   end
 
   @impl ThousandIsland.Handler
+  def handle_data(
+        <<sender_length::@sender_ref_length, sender_ref::binary-size(sender_length),
+          error_status::@error_status_length, data::binary>>,
+        _socket,
+        {{:listening, pid}, state}
+      ) do
+    Logger.debug(
+      message: "Forwarding client proxy data to the listener",
+      error_status: error_status,
+      data: data
+    )
+
+    listener_from = :erlang.binary_to_term(sender_ref)
+
+    case error_status do
+      0 ->
+        GenServer.reply(listener_from, {:ok, data})
+
+      _ ->
+        GenServer.reply(listener_from, {:error, data})
+    end
+
+    {:continue, {{:listening, pid}, state}}
+  end
+
+  @impl ThousandIsland.Handler
   def handle_data(data, _socket, {{:listening, pid}, state}) do
     Logger.info(message: "Got random while listening data", data: data)
     {:continue, {{:listening, pid}, state}}
@@ -132,6 +160,33 @@ defmodule HivexProxyServer.BindHandler do
   def handle_data(data, _socket, state) do
     Logger.info(message: "Got random data", data: data)
     {:close, state}
+  end
+
+  @doc """
+  Handle calls send to the handler.
+
+  ## Listener request
+  Forward listener request/data through the tunnel.
+  """
+  @impl GenServer
+  def handle_call({:listener_request, data}, from, {socket, state}) do
+    Logger.debug(message: "Forwarding listener request", data: data)
+
+    Task.Supervisor.start_child(HivexProxyServer.ListenerRequestTaskSupervisor, fn ->
+      Logger.debug(message: "Forwarding listener request in Task")
+      from_binary = :erlang.term_to_binary(from)
+
+      case ThousandIsland.Socket.send(
+             socket,
+             <<byte_size(from_binary)::@sender_ref_length>> <>
+               from_binary <> data
+           ) do
+        :ok -> :ok
+        {:error, reasone} -> GenServer.reply(from, {:error, reasone})
+      end
+    end)
+
+    {:noreply, {socket, state}}
   end
 
   @doc """

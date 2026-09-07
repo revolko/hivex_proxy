@@ -6,6 +6,7 @@ defmodule HivexProxyServer.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      {Task.Supervisor, name: HivexProxyServer.ListenerRequestTaskSupervisor},
       {ThousandIsland, port: 1666, handler_module: HivexProxyServer.BindHandler}
     ]
 
