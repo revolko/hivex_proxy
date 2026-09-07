@@ -1,7 +1,6 @@
 defmodule HivexProxyServer.BindHandler do
   @moduledoc """
   TODO
-   * the server read timeout kills the connection after a minute -- implement heart beat
    * port number check
 
   The connection handler for a proxy client connection, creating a tunnel.
