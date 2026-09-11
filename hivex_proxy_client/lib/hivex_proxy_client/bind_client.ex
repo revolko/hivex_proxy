@@ -19,10 +19,6 @@ defmodule HivexProxyClient.BindClient do
     GenServer.start_link(__MODULE__, server)
   end
 
-  def close_socket() do
-    GenServer.call(__MODULE__, :close)
-  end
-
   @impl true
   def init(%HivexProxyClient.Server{} = server) do
     binary_port = :binary.encode_unsigned(server.proxy_listener_port)
@@ -33,12 +29,6 @@ defmodule HivexProxyClient.BindClient do
       schedule_healthcheck()
       {:ok, %{tunnel: socket, server: server}}
     end
-  end
-
-  @impl true
-  def handle_call(:close, _from, %{tunnel: socket} = state) do
-    :ok = :gen_tcp.close(socket)
-    {:stop, :socket_close_call, :ok, state}
   end
 
   @impl true
