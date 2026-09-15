@@ -47,7 +47,8 @@ defmodule HivexProxyServer.BindHandler do
   @impl ThousandIsland.Handler
   def handle_connection(_socket, state) do
     Logger.info(message: "Proxy client connected")
-    {:continue, state}
+    tunnel = HivexProxyServer.Tunnel.init()
+    {:continue, Map.merge(state, %{tunnel: tunnel})}
   end
 
   @doc """
@@ -150,15 +151,16 @@ defmodule HivexProxyServer.BindHandler do
   end
 
   @impl ThousandIsland.Handler
-  def handle_data(data, _socket, {{:listening, pid}, state}) do
-    Logger.info(message: "Got random while listening data", data: data)
-    {:continue, {{:listening, pid}, state}}
-  end
+  def handle_data(data, socket, state) do
+    case HivexProxyServer.Tunnel.handle_frame(data, socket, state[:tunnel]) do
+      {:ok, tunnel} ->
+        state = %{state | tunnel: tunnel}
+        {:continue, state}
 
-  @impl ThousandIsland.Handler
-  def handle_data(data, _socket, state) do
-    Logger.info(message: "Got random data", data: data)
-    {:close, state}
+      {:error, reason} ->
+        Logger.debug(message: "Failed to handle the frame", details: reason)
+        {:close, state}
+    end
   end
 
   @doc """
