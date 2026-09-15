@@ -7,7 +7,8 @@ defmodule HivexProxyServer.Application do
   def start(_type, _args) do
     children = [
       {Task.Supervisor, name: HivexProxyServer.ListenerRequestTaskSupervisor},
-      {ThousandIsland, port: 1666, handler_module: HivexProxyServer.BindHandler}
+      {ThousandIsland,
+       port: 1666, handler_module: HivexProxyServer.BindHandler, handler_options: %{}}
     ]
 
     opts = [strategy: :one_for_one, name: HivexProxyServer.Supervisor]
