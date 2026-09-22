@@ -28,13 +28,36 @@ defmodule HivexProxyServer.BindHandler do
   After this point, all traffic that arrives to the new server listener is forwarded to the proxy
   client through the tunnel. The proxy client takes care of forwarding requests to a dedicated
   service/server.
+
+  ## Handling data
+
+  The first message that the proxy server expects is the **bind request**. The request triggers
+  creation of the `listener` on the given port (read from the request message). After listener is
+  started, the handler send **bind response** message to the proxy client and is switched to the
+  `listening` state.
+
+  _TO BE IMPLEMENTED_
+  ### Listening
+  In the listening state, the proxy server redirects proxy client messages to clients of the
+  listener. A listener is picked based on the first 7 bytes of a message (version - 1 byte, IP - 
+  4 bytes, port - 2 bytes).
+
+  ### Stopping the listener
+  The client can stop the listener by simply closing the tunnel.
+
+  ### Health checks
+  The proxy client sends the **health check** message every 30 seconds. The health check is started
+  the moment the proxy client connects to the proxy server. Health checks make sure that the tunnel
+  stays open. Without health checks the TCP tunnel closes after some time without any traffic. By
+  default a 1 minute.
+
+  ### Unexpected control message
+  In case of the unexpected control message, the server closes the tunnel.
+  The client can start a new tunnel which restarts the whole tunnel
+  establishing process.
   """
 
-  @version 0x1
-  @bind_command 0x1
-  @health_check_signal <<0::6*8>>
   @sender_ref_length 32
-  @error_status_length 8
 
   use ThousandIsland.Handler
 
@@ -49,105 +72,6 @@ defmodule HivexProxyServer.BindHandler do
     Logger.info(message: "Proxy client connected")
     tunnel = HivexProxyServer.Tunnel.init()
     {:continue, Map.merge(state, %{tunnel: tunnel})}
-  end
-
-  @doc """
-  Handles any data sent by the client through the tunnel.
-
-  The first message that the proxy server expects is the **bind request**. The request triggers
-  creation of the `listener` on the given port (read from the request message). After listener is
-  started, the handler send **bind response** message to the proxy client and is switched to the
-  `listening` state.
-
-  _TO BE IMPLEMENTED_
-  ## Listening
-  In the listening state, the proxy server redirects proxy client messages to clients of the
-  listener. A listener is picked based on the first 7 bytes of a message (version - 1 byte, IP - 
-  4 bytes, port - 2 bytes).
-
-  ## Stopping the listener
-  The client can stop the listener by simply closing the tunnel.
-
-  ## Health checks
-  The proxy client sends the **health check** message every 30 seconds. The health check is started
-  the moment the proxy client connects to the proxy server. Health checks make sure that the tunnel
-  stays open. Without health checks the TCP tunnel closes after some time without any traffic. By
-  default a 1 minute.
-
-  ## Unexpected control message
-  In case of the unexpected control message, the server closes the tunnel.
-  The client can start a new tunnel which restarts the whole tunnel
-  establishing process.
-  """
-  @impl ThousandIsland.Handler
-  def handle_data(<<@version, @bind_command, port::binary-size(2)>>, socket, state) do
-    Logger.info(message: "Handling bind request", port: port)
-
-    with {:start_listener, {:ok, pid}} <-
-           {:start_listener,
-            ThousandIsland.start_link(
-              port: :binary.decode_unsigned(port),
-              handler_module: HivexProxyServer.ListenerHandler,
-              handler_options: [bind_handler: self()]
-            )},
-         {:get_listener_info, pid, {:ok, {_listen_address, listen_port}}} <-
-           {:get_listener_info, pid, ThousandIsland.listener_info(pid)},
-         {:send_bind_response, pid, :ok} <-
-           {:send_bind_response, pid,
-            ThousandIsland.Socket.send(socket, <<@version, @bind_command, listen_port::16>>)} do
-      {:continue, {{:listening, pid}, state}}
-    else
-      {:start_listener, error} ->
-        Logger.error(message: "Unable to start the listener supervisor", details: error)
-        {:close, state}
-
-      {:get_listener_info, pid, _error} ->
-        Logger.error(message: "Unable to get listener information")
-        {:close, {{:listening, pid}, state}}
-
-      {:send_bind_response, pid, {:error, error}} ->
-        Logger.error(message: "Failed to send bind response message", details: error)
-        {:close, {{:listening, pid}, state}}
-    end
-  end
-
-  @impl ThousandIsland.Handler
-  def handle_data(<<@version>> <> @health_check_signal, socket, state) do
-    Logger.debug(message: "Received health check")
-
-    with :ok <- ThousandIsland.Socket.send(socket, <<@version>> <> @health_check_signal) do
-      Logger.debug(message: "Health check ACK sent")
-    else
-      {:error, error} -> Logger.error(message: "Failed to send health check ACK", details: error)
-    end
-
-    {:continue, state}
-  end
-
-  @impl ThousandIsland.Handler
-  def handle_data(
-        <<sender_length::@sender_ref_length, sender_ref::binary-size(sender_length),
-          error_status::@error_status_length, data::binary>>,
-        _socket,
-        {{:listening, pid}, state}
-      ) do
-    Logger.debug(
-      message: "Forwarding client proxy data to the listener",
-      error_status: error_status,
-      data: data
-    )
-
-    listener_from = :erlang.binary_to_term(sender_ref)
-
-    case error_status do
-      0 ->
-        GenServer.reply(listener_from, {:ok, data})
-
-      _ ->
-        GenServer.reply(listener_from, {:error, data})
-    end
-
-    {:continue, {{:listening, pid}, state}}
   end
 
   @impl ThousandIsland.Handler
@@ -192,20 +116,7 @@ defmodule HivexProxyServer.BindHandler do
 
   @doc """
   Handles the closing of the tunnel.
-
-  If the handler was in the `listening` state, the listener
-  supervisor is stopped. All opened connections on the listener
-  are dropped because they cannot be delivered -- the tunnel is
-  already down.
   """
-  @impl ThousandIsland.Handler
-  def handle_close(_socket, {{:listening, listener_pid}, _state}) do
-    Logger.info(message: "Proxy client connection is closed")
-    :ok = ThousandIsland.stop(listener_pid)
-    Logger.info(message: "Bind listener stopped")
-    :ignored
-  end
-
   @impl ThousandIsland.Handler
   def handle_close(_socket, _state) do
     Logger.info(message: "Proxy client connection is closed")
