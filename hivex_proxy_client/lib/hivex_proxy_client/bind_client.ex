@@ -6,12 +6,13 @@ defmodule HivexProxyClient.BindClient do
 
   @server_version 0x1
   @bind_command 0x1
+  @bind_error_response <<0::16>>
   @error_status_length 8
   @health_check_signal <<0::6*8>>
   @health_check_period 30 * 1000
   @sender_ref_length 32
 
-  use GenServer
+  use GenServer, restart: :transient
 
   require Logger
 
@@ -50,6 +51,15 @@ defmodule HivexProxyClient.BindClient do
       ) do
     Logger.debug(message: "Received health check ACK")
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(
+        {:tcp, _socket, <<@server_version, @bind_command, @bind_error_response>>},
+        state
+      ) do
+    Logger.error(message: "Got bind error response from server", state: state)
+    {:stop, {:shutdown, :bind_error_response}, state}
   end
 
   @impl true
