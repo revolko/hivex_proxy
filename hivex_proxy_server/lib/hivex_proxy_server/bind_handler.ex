@@ -57,8 +57,6 @@ defmodule HivexProxyServer.BindHandler do
   establishing process.
   """
 
-  @sender_ref_length 32
-
   use ThousandIsland.Handler
 
   require Logger
@@ -99,15 +97,10 @@ defmodule HivexProxyServer.BindHandler do
 
     Task.Supervisor.start_child(HivexProxyServer.ListenerRequestTaskSupervisor, fn ->
       Logger.debug(message: "Forwarding listener request in Task")
-      from_binary = :erlang.term_to_binary(from)
 
-      case ThousandIsland.Socket.send(
-             socket,
-             <<byte_size(from_binary)::@sender_ref_length>> <>
-               from_binary <> data
-           ) do
+      case HivexProxyServer.Tunnel.forward_request(data, from, socket) do
         :ok -> :ok
-        {:error, reasone} -> GenServer.reply(from, {:error, reasone})
+        {:error, reason} -> GenServer.reply(from, {:error, reason})
       end
     end)
 
