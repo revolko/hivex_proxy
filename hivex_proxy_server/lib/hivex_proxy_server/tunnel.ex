@@ -7,6 +7,7 @@ defmodule HivexProxyServer.Tunnel do
 
   @version 0x1
   @bind_command 0x1
+  @bind_error_response <<0::16>>
   @health_check_signal <<0::6*8>>
   @sender_ref_length 32
   @error_status_length 8
@@ -36,7 +37,9 @@ defmodule HivexProxyServer.Tunnel do
          :ok <- send_frame(socket, <<@version, @bind_command, listen_port::16>>) do
       {:ok, %{tunnel | listening: true, listener_pid: pid}}
     else
-      {:error, reason} -> {:error, reason}
+      {:error, reason} ->
+        send_frame(socket, <<@version, @bind_command, @bind_error_response>>)
+        {:error, reason}
     end
   end
 
