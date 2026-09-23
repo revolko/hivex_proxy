@@ -89,4 +89,18 @@ defmodule HivexProxyServer.Tunnel do
     Logger.debug(message: "Got random data", data: data, tunnel: tunnel)
     {:error, tunnel}
   end
+
+  def forward_request(data, from, socket) do
+    from_binary = :erlang.term_to_binary(from)
+
+    send_frame(
+      socket,
+      <<byte_size(from_binary)::@sender_ref_length>> <>
+        from_binary <> data
+    )
+  end
+
+  def send_frame(socket, data) do
+    ThousandIsland.Socket.send(socket, data)
+  end
 end
