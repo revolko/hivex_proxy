@@ -33,7 +33,7 @@ defmodule HivexProxyServer.Tunnel do
              handler_options: [bind_handler: self()]
            ),
          {:ok, {_listen_address, listen_port}} <- ThousandIsland.listener_info(pid),
-         :ok <- ThousandIsland.Socket.send(socket, <<@version, @bind_command, listen_port::16>>) do
+         :ok <- send_frame(socket, <<@version, @bind_command, listen_port::16>>) do
       {:ok, %{tunnel | listening: true, listener_pid: pid}}
     else
       {:error, reason} -> {:error, reason}
@@ -70,7 +70,7 @@ defmodule HivexProxyServer.Tunnel do
   def handle_frame(<<@version>> <> @health_check_signal, socket, tunnel) do
     Logger.debug(message: "Received health check")
 
-    case ThousandIsland.Socket.send(socket, <<@version>> <> @health_check_signal) do
+    case send_frame(socket, <<@version>> <> @health_check_signal) do
       :ok ->
         Logger.debug(message: "Health check ACK sent")
 
