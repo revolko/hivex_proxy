@@ -13,6 +13,10 @@ defmodule HivexProxyClient.ConnectionsSupervisor do
     DynamicSupervisor.start_child(__MODULE__, {HivexProxyClient.BindClient, server})
   end
 
+  def deregister_server(client_pid) do
+    HivexProxyClient.BindClient.stop_client(client_pid)
+  end
+
   @impl true
   def init(_init_arg) do
     DynamicSupervisor.init(strategy: :one_for_one)

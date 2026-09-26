@@ -6,6 +6,7 @@ defmodule HivexProxyClient.BindClient do
 
   @server_version 0x1
   @bind_command 0x1
+  @stop_command 0xFF
   @bind_error_response <<0::16>>
   @error_status_length 8
   @health_check_signal <<0::6*8>>
@@ -20,6 +21,10 @@ defmodule HivexProxyClient.BindClient do
     GenServer.start_link(__MODULE__, server)
   end
 
+  def stop_client(client_pid) do
+    GenServer.call(client_pid, {:stop})
+  end
+
   @impl true
   def init(%HivexProxyClient.Server{} = server) do
     binary_port = :binary.encode_unsigned(server.proxy_listener_port)
@@ -29,6 +34,23 @@ defmodule HivexProxyClient.BindClient do
       Logger.info(message: "connected to proxy server")
       schedule_healthcheck()
       {:ok, %{tunnel: socket, server: server}}
+    end
+  end
+
+  @impl true
+  def handle_call({:stop}, _from, %{tunnel: socket} = state) do
+    case :gen_tcp.send(socket, <<@server_version, @stop_command>>) do
+      :ok ->
+        Logger.debug(message: "Sent stop signal. Stopping the client.")
+        {:stop, :normal, :ok, state}
+
+      {:error, reason} ->
+        Logger.warning(
+          message: "Failed to send the stop signal. Stopping the client anyway.",
+          details: reason
+        )
+
+        {:stop, :normal, :ok, state}
     end
   end
 

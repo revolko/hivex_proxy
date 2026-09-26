@@ -7,6 +7,7 @@ defmodule HivexProxyServer.Tunnel do
 
   @version 0x1
   @bind_command 0x1
+  @stop_command 0xFF
   @bind_error_response <<0::16>>
   @health_check_signal <<0::6*8>>
   @sender_ref_length 32
@@ -82,6 +83,11 @@ defmodule HivexProxyServer.Tunnel do
     end
 
     {:ok, tunnel}
+  end
+
+  def handle_frame(<<@version, @stop_command>>, _socket, _tunnel) do
+    Logger.debug(message: "Received stop command")
+    :close
   end
 
   def handle_frame(
