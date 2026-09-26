@@ -79,6 +79,9 @@ defmodule HivexProxyServer.BindHandler do
         state = %{state | tunnel: tunnel}
         {:continue, state}
 
+      :close ->
+        {:close, state}
+
       {:error, reason} ->
         Logger.debug(message: "Failed to handle the frame", details: reason)
         {:close, state}
